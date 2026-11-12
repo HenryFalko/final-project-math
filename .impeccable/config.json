@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "oversized-h1",
+        "value": "*",
+        "files": [
+          "report/rapport.html"
+        ],
+        "createdAt": "2026-11-12T10:18:02.744Z",
+        "reason": "Claude: printed A4 report title at 16pt, already reduced from 19pt and fits on one line in the PDF; not a web hero"
+      }
+    ]
+  }
+}

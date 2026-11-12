@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Catastrophes climatiques et croissance économique</title>
+<script>
+window.MathJax = { tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+<style>
+  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
+  body { font-family: "Georgia", "Times New Roman", serif; font-size: 10.6pt; line-height: 1.45; color: #1d1d1d; background: #fff; }
+  h1 { font-size: 16pt; color: #1f3a5f; margin: 0 0 4px; text-align: center; }
+  .subtitle { text-align: center; color: #555; margin-bottom: 4px; }
+  .meta { text-align: center; color: #777; font-size: 9.5pt; margin-bottom: 14px; }
+  h2 { font-size: 13.5pt; color: #1f3a5f; border-bottom: 1.5px solid #1f3a5f; padding-bottom: 2px; margin-top: 20px; page-break-after: avoid; }
+  h3 { font-size: 11.3pt; color: #2a6f97; margin: 14px 0 4px; page-break-after: avoid; }
+  p { margin: 5px 0 7px; text-align: justify; }
+  .abstract { background: #f2f6fa; border-left: 4px solid #2a6f97; padding: 8px 12px; margin: 10px 0 14px; }
+  table { border-collapse: collapse; margin: 8px auto; font-size: 9.2pt; page-break-inside: avoid; }
+  th, td { border-bottom: 1px solid #ccc; padding: 3px 8px; text-align: right; }
+  th { background: #eef2f6; border-bottom: 1.5px solid #1f3a5f; }
+  td:first-child, th:first-child { text-align: left; }
+  caption { caption-side: top; font-weight: bold; font-size: 9.5pt; margin-bottom: 4px; color: #333; }
+  figure { margin: 10px auto; text-align: center; page-break-inside: avoid; }
+  figure img { max-width: 100%; }
+  figure.half img { max-width: 78%; }
+  figcaption { font-size: 9pt; color: #444; margin-top: 2px; }
+  .two { display: flex; gap: 10px; page-break-inside: avoid; }
+  .two figure { flex: 1; margin: 6px 0; }
+  code { font-family: Consolas, monospace; font-size: 9pt; background: #f4f4f4; padding: 0 3px; }
+  .key { background: #fff8e6; border-left: 4px solid #e07a1f; padding: 6px 12px; margin: 8px 0; }
+  ul, ol { margin: 4px 0 8px 0; padding-left: 22px; }
+  li { margin: 2px 0; }
+  .ok { color: #1b7f3b; font-weight: bold; }
+  .pb { page-break-before: always; }
+  .refs p { text-align: left; font-size: 9.5pt; margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<h1>Catastrophes climatiques et croissance économique</h1>
+<div class="subtitle">Régression linéaire et arbre de régression implémentés from scratch, comparés à scikit-learn</div>
+<div class="meta">Projet de Machine Learning (Math for ML) — Enseignant : Alassane Diallo — Novembre 2026</div>
+
+<div class="abstract">
+<b>Résumé.</b> Nous étudions l'influence des catastrophes d'origine climatique (inondations, tempêtes, sécheresses,
+températures extrêmes, feux) sur la croissance annuelle du PIB réel. Deux jeux de données Kaggle (EM-DAT et Banque
+mondiale) sont fusionnés en un panel de 8 093 observations pays-année (201 pays, 1971–2020). Nous implémentons
+<i>from scratch</i> une régression linéaire/Ridge (équations normales, descente de gradient, SGD par mini-lots) et un
+arbre de régression CART, puis les comparons à scikit-learn sur des découpages temporels identiques. Les
+implémentations reproduisent scikit-learn à la précision machine. Le modèle linéaire atteint un $R^2$ de 0,244
+sur le test 2013–2019 (RMSE 3,13 pts contre 3,67 pour la moyenne). L'ajout des variables de catastrophes réduit
+l'erreur hors échantillon, surtout pour les pays effectivement frappés (RMSE −9 % sur le test). Un choc causant
+des dommages équivalents à 10 % du PIB est associé à une croissance plus faible de 1,5 point l'année du choc
+(IC 95 % : [−2,5 ; −0,6]), suivie d'un rebond partiel l'année suivante.
+</div>
+
+<h2>1. Problème et question de recherche</h2>
+<p>Les catastrophes climatiques sont de plus en plus fréquentes et coûteuses. Pour un petit État insulaire, un seul
+cyclone peut détruire plus que la production annuelle du pays. Mais l'effet sur la croissance n'est pas évident :
+la destruction du capital fait baisser la production, alors que la reconstruction peut la stimuler ensuite.</p>
+<p><b>Question.</b> <i>Les catastrophes climatiques subies par un pays une année donnée réduisent-elles sa croissance
+économique, et de combien ? L'effet persiste-t-il l'année suivante ?</i></p>
+<p><b>Tâche d'apprentissage.</b> Régression supervisée. La cible $y_{it}$ est la croissance annuelle du PIB réel (%)
+du pays $i$ l'année $t$. Les variables explicatives sont l'exposition aux catastrophes ($t$ et $t-1$) et des
+contrôles macroéconomiques.</p>
+<p><b>Critères de succès</b> (définis avant les expériences) :
+(i) battre des références naïves (moyenne, persistance) sur une période de test postérieure à l'entraînement ;
+(ii) <b>ablation</b> : le modèle « contrôles + catastrophes » doit avoir une erreur hors échantillon plus faible que
+le modèle « contrôles seuls », ce qui teste directement la question ;
+(iii) des effets stables, mesurés par des intervalles de confiance bootstrap ;
+(iv) des implémentations from scratch qui reproduisent scikit-learn.</p>
+
+<h2>2. Données</h2>
+<table>
+<caption>Tableau 1 — Jeux de données Kaggle utilisés (non redistribués, voir README)</caption>
+<tr><th>Jeu</th><th style="text-align:left">Source / URL Kaggle</th><th style="text-align:left">Contenu</th></tr>
+<tr><td>Catastrophes naturelles 1970–2021</td><td style="text-align:left">EM-DAT (CRED, UCLouvain)<br><code>kaggle.com/datasets/brsdincer/all-natural-disasters-19002021-eosdis</code></td><td style="text-align:left">14 644 événements : pays, année, type, morts, sinistrés, dommages (k USD)</td></tr>
+<tr><td>PIB mondial</td><td style="text-align:left">Banque mondiale (WDI)<br><code>kaggle.com/datasets/zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-growths</code></td><td style="text-align:left">PIB courant, PIB/hab, croissance du PIB réel, 1960–2020</td></tr>
+</table>
+<p>Nous retenons les catastrophes <b>climatiques</b> au sens EM-DAT : hydrologiques (inondations, glissements),
+météorologiques (tempêtes) et climatologiques (sécheresses, températures extrêmes, feux). Les catastrophes
+<b>géophysiques</b> (séismes, volcans) servent de groupe de comparaison, car elles ne dépendent pas du climat. Les
+épidémies et infestations sont exclues.</p>
+
+<div class="two">
+<figure><img src="../figures/fig01_disasters_per_year.png"><figcaption>Figure 1 — Le nombre d'événements climatiques enregistrés est multiplié par ~5 depuis 1970 ; les événements géophysiques restent stables.</figcaption></figure>
+<figure><img src="../figures/fig04_top_shocks.png"><figcaption>Figure 2 — Les chocs les plus lourds touchent de petits États insulaires (cyclones).</figcaption></figure>
+</div>
+
+<h3>2.1 Construction des variables (<code>src/data_prep.py</code>)</h3>
+<p>Les catastrophes sont agrégées par (pays, année), puis fusionnées avec la Banque mondiale. Un pays-année sans
+catastrophe enregistrée reçoit 0. Pour comparer des pays de tailles très différentes, chaque intensité est
+<b>rapportée à la taille de l'économie</b>, puis transformée par $\log(1+x)$ car les distributions sont très
+asymétriques (fig. 3).</p>
+<table>
+<caption>Tableau 2 — Variables explicatives ($p = 11$)</caption>
+<tr><th>Variable</th><th style="text-align:left">Définition</th></tr>
+<tr><td><code>log_dmg_climate_pct</code></td><td style="text-align:left">$\log(1+\text{dommages climatiques en \% du PIB})$, année $t$</td></tr>
+<tr><td><code>log_dmg_climate_pct_lag1</code></td><td style="text-align:left">idem, année $t-1$ (effet retardé / reconstruction)</td></tr>
+<tr><td><code>log_deaths_climate_pm</code></td><td style="text-align:left">$\log(1+\text{morts par million d'habitants})$</td></tr>
+<tr><td><code>log_affected_climate_pct</code></td><td style="text-align:left">$\log(1+\text{sinistrés en \% de la population})$</td></tr>
+<tr><td><code>n_hydro, n_meteo, n_climato</code></td><td style="text-align:left">nombre d'événements par groupe</td></tr>
+<tr><td><code>log_dmg_geo_pct</code></td><td style="text-align:left">dommages géophysiques en % du PIB (comparaison)</td></tr>
+<tr><td><code>growth_lag1</code></td><td style="text-align:left">croissance de l'année précédente (inertie)</td></tr>
+<tr><td><code>log_gdppc_lag1</code></td><td style="text-align:left">log du PIB par habitant en $t-1$ (niveau de développement)</td></tr>
+<tr><td><code>world_growth</code></td><td style="text-align:left">croissance mondiale en $t$ (cycle global)</td></tr>
+</table>
+
+<h3>2.2 Valeurs manquantes et biais connus</h3>
+<p>Seules 30–40 % des catastrophes ont un montant de dommages renseigné (fig. 4). Un montant manquant est compté comme
+0. Cette hypothèse forte sous-estime les chocs, surtout dans les pays pauvres. Nous la compensons en partie avec des
+variables toujours renseignées : morts, sinistrés et nombre d'événements. La hausse des enregistrements depuis 1970
+(fig. 1) reflète en partie un meilleur recensement, pas seulement plus de catastrophes.</p>
+
+<div class="two">
+<figure><img src="../figures/fig03_distributions.png"><figcaption>Figure 3 — Distributions de la cible et des dommages (> 0). Seuls 22 % des pays-années ont des dommages renseignés > 0, et 3,7 % dépassent 1 % du PIB.</figcaption></figure>
+<figure class="half"><img src="../figures/fig02_damage_reporting.png"><figcaption>Figure 4 — Part des catastrophes avec dommages renseignés, par décennie.</figcaption></figure>
+</div>
+
+<h3>2.3 Analyse exploratoire</h3>
+<div class="two">
+<figure><img src="../figures/fig05_growth_by_bucket.png"><figcaption>Figure 5 — Écart de croissance au monde selon l'intensité du choc (IC 95 %).</figcaption></figure>
+<figure><img src="../figures/fig06_event_study.png"><figcaption>Figure 6 — Étude d'événement autour de 301 chocs ≥ 1 % du PIB : chute d'environ 1 pt l'année du choc, puis rebond.</figcaption></figure>
+</div>
+<p>L'étude d'événement (fig. 6) donne la meilleure intuition descriptive. Avant le choc, la croissance est proche de
+sa moyenne. L'année du choc, elle chute d'environ 1,1 point (IC 95 % excluant 0). L'année suivante, elle repasse
+légèrement au-dessus de la normale. Ce profil justifie d'inclure les dommages en $t$ et en $t-1$. Les corrélations
+brutes restent faibles (|ρ| < 0,1) : la croissance dépend d'abord de son inertie et du cycle mondial.</p>
+
+<h3>2.4 Découpage et prévention des fuites de données</h3>
+<p>Le découpage est <b>chronologique</b> : <b>train</b> 1971–2005 (5 174 obs.), <b>validation</b> 2006–2012 (1 359), <b>test</b>
+2013–2019 (1 371, utilisé une seule fois). L'année <b>2020</b> (189 obs., COVID) est un <i>stress test</i> séparé. Un
+découpage aléatoire placerait des années futures dans l'entraînement et surestimerait la performance, car les
+séries de croissance sont autocorrélées. Les bornes de winsorisation de la cible (1<sup>er</sup>/99<sup>e</sup> centiles :
+[−13,5 ; 21,3] %, qui neutralisent les guerres et les booms pétroliers) et les paramètres de standardisation sont
+<b>estimés sur le train uniquement</b>. Les retards vérifient que l'année $t-1$ existe bien.</p>
+<figure class="half"><img src="../figures/fig07_splits.png" style="max-width:70%"><figcaption>Figure 7 — Découpage temporel du panel.</figcaption></figure>
+
+<h2 class="pb">3. Méthodologie mathématique</h2>
+<h3>3.1 Régression linéaire / Ridge (<code>src/scratch_linear.py</code>)</h3>
+<p><b>Modèle.</b> $\hat y_i=\mathbf{w}^\top\mathbf{x}_i+b$, avec $\mathbf{x}_i\in\mathbb{R}^{11}$ standardisé.
+<b>Objectif</b> (MSE + pénalité L2, biais non pénalisé) :</p>
+$$J(\mathbf{w},b)=\frac{1}{2n}\sum_{i=1}^{n}\left(\mathbf{w}^\top\mathbf{x}_i+b-y_i\right)^2+\frac{\alpha}{2}\lVert\mathbf{w}\rVert^2 .$$
+<p><b>Gradient.</b> Avec $\mathbf{r}=X\mathbf{w}+b\mathbf{1}-\mathbf{y}$ :
+$\nabla_{\mathbf{w}}J=\tfrac1n X^\top\mathbf{r}+\alpha\mathbf{w}$, $\ \partial_b J=\tfrac1n\mathbf{1}^\top\mathbf{r}$.</p>
+<p><b>Optimisation.</b> Trois procédures, toutes codées à la main :</p>
+<ol>
+<li><b>Descente de gradient</b> : $\theta_{k+1}=\theta_k-\eta\nabla J(\theta_k)$. $J$ est quadratique convexe, de hessienne
+$H=\tilde X^\top\tilde X/n+\alpha D$ ($\tilde X$ = $X$ avec une colonne de 1, $D=\mathrm{diag}(0,1,\dots,1)$). La
+DG converge si et seulement si $0<\eta<2/\lambda_{\max}(H)$, avec une vitesse linéaire de taux
+$\max_i|1-\eta\lambda_i|$. Sur nos données, $\lambda_{\max}=2{,}46$, donc $\eta_{\max}=0{,}81$. Arrêt :
+$|J_k-J_{k-1}|<10^{-14}$ ou $10^4$ itérations.</li>
+<li><b>SGD par mini-lots</b> : gradient estimé sur $B$ observations tirées sans remise (mélange à chaque époque), avec un
+pas décroissant $\eta_e=\eta_0/(1+\delta e)$.</li>
+<li><b>Équations normales</b> (vérification) : $\nabla J=0\iff(\tilde X^\top\tilde X/n+\alpha D)\,\theta=\tilde X^\top\mathbf y/n$,
+résolu par <code>np.linalg.solve</code>.</li>
+</ol>
+<p><b>Incertitude.</b> Les observations d'un même pays sont corrélées dans le temps. Nous utilisons donc un
+<b>bootstrap par pays</b>, implémenté from scratch : 500 tirages de pays entiers avec remise, réajustement du modèle,
+puis percentiles 2,5 / 97,5 %.</p>
+<p><b>Pourquoi ce modèle ?</b> La question porte sur l'<i>influence</i> des catastrophes. Un modèle linéaire donne
+des coefficients interprétables (points de croissance par unité de choc) assortis d'intervalles de confiance.</p>
+
+<h3>3.2 Arbre de régression CART (<code>src/scratch_tree.py</code>)</h3>
+<p><b>Modèle.</b> L'arbre partitionne l'espace en régions $R_m$ et prédit la moyenne locale :
+$\hat f(\mathbf x)=\sum_m c_m\mathbb 1\{\mathbf x\in R_m\}$, avec $c_m=\bar y_{R_m}$. <b>Impureté</b> :
+$\mathrm{SSE}(R)=\sum_{i\in R}y_i^2-(\sum_{i\in R}y_i)^2/|R|$. <b>Construction gloutonne récursive</b> : à chaque nœud, on
+choisit la coupure $(j,s)$ qui maximise</p>
+$$\Delta(j,s)=\mathrm{SSE}(R)-\mathrm{SSE}(R_{x_j\le s})-\mathrm{SSE}(R_{x_j>s}).$$
+<p>Après tri selon $x_j$, les sommes cumulées de $y$ et $y^2$ évaluent toutes les coupures en $O(n)$, soit
+$O(p\,n\log n)$ par niveau. Le seuil est le milieu entre deux valeurs distinctes consécutives. <b>Arrêt</b> :
+<code>max_depth</code>, <code>min_samples_leaf</code>, ou absence de coupure améliorante. <b>Importance</b> d'une
+variable : somme des gains $\Delta$ qu'elle procure, normalisée.</p>
+<p><b>Pourquoi un arbre ?</b> L'effet d'un choc peut être non linéaire : nul en dessous d'un seuil, brutal au-delà, et
+dépendant du niveau de développement. Un arbre capture seuils et interactions sans les spécifier à l'avance.</p>
+
+<h3>3.3 Vérifications numériques</h3>
+<ul>
+<li><b>Gradient</b> : comparé aux différences finies centrées ($\varepsilon=10^{-6}$), l'erreur relative vaut $4\times10^{-10}$ pour $\alpha\in\{0;0{,}1;1\}$. <span class="ok">✓</span></li>
+<li><b>Convergence</b> : la DG converge linéairement et diverge exactement au-delà de $2/\lambda_{\max}$ (fig. 8). <span class="ok">✓</span></li>
+<li><b>Cohérence des solveurs</b> : max |DG − équations normales| = $1{,}7\times10^{-7}$ ; max |SGD − normales| = 0,017. <span class="ok">✓</span></li>
+<li><b>Arbre</b> : sur une fonction en escalier bruitée, l'arbre de profondeur 2 retrouve les seuils 0,30 et 0,70 et les paliers 1 / 4 / 2. <span class="ok">✓</span></li>
+</ul>
+<div class="two">
+<figure><img src="../figures/fig09_gd_convergence.png"><figcaption>Figure 8 — DG : convergence linéaire, et divergence pour $\eta=0{,}828>2/\lambda_{\max}=0{,}812$.</figcaption></figure>
+<figure><img src="../figures/fig10_sgd.png"><figcaption>Figure 9 — SGD : plateau dû au bruit stochastique, d'autant plus haut que le lot est petit.</figcaption></figure>
+</div>
+
+<h2>4. Protocole expérimental</h2>
+<ul>
+<li><b>Sélection des hyperparamètres sur la validation uniquement.</b> Ridge : $\alpha\in\{0\}\cup[10^{-4},10]$ (22 valeurs). Arbre : grille $\texttt{max\_depth}\in\{1..12\}\times\texttt{min\_samples\_leaf}\in\{5,10,20,50,100,200\}$.</li>
+<li><b>Métriques</b> : MAE (robuste aux extrêmes), RMSE (pénalise les grosses erreurs, en points de croissance), $R^2$ (part de variance expliquée). Aucune métrique n'est utilisée seule.</li>
+<li><b>Références</b> : moyenne du train ; persistance ($\hat y_t=y_{t-1}$) ; forêt aléatoire scikit-learn (plafond indicatif).</li>
+<li><b>Benchmark</b> (notebook 04) : mêmes matrices, mêmes hyperparamètres. Correspondance Ridge : $\alpha_{\text{sklearn}}=n\,\alpha$, car scikit-learn ne divise pas la perte par $n$. Temps : médiane de 5 ajustements.</li>
+<li><b>Reproductibilité</b> : graine 42 partout ; le pipeline complet s'exécute en ~2 minutes (README).</li>
+</ul>
+<div class="two">
+<figure><img src="../figures/fig11_ridge_alpha.png"><figcaption>Figure 10 — Sélection de $\alpha$ : la pénalité n'améliore pas la validation ($\alpha^*=0$, soit les MCO).</figcaption></figure>
+<figure><img src="../figures/fig15_tree_grid.png"><figcaption>Figure 11 — Grille de l'arbre : sur-apprentissage au-delà de la profondeur optimale lorsque les feuilles sont petites.</figcaption></figure>
+</div>
+<p>Avec $n=5\,174$ observations pour 11 variables peu colinéaires, la régularisation est inutile ($\alpha^*=0$). L'arbre
+retenu a <code>max_depth = 8</code> et <code>min_samples_leaf = 100</code>, soit 40 feuilles.</p>
+
+<h2 class="pb">5. Résultats</h2>
+<h3>5.1 From scratch vs scikit-learn</h3>
+<table>
+<caption>Tableau 3 — Benchmark sur des découpages identiques (temps : médiane de 5 ajustements)</caption>
+<tr><th>Méthode</th><th>Implémentation</th><th>fit (ms)</th><th>RMSE val</th><th>MAE test</th><th>RMSE test</th><th>R² test</th><th>max |Δŷ test|</th></tr>
+<tr><td>MCO</td><td>from scratch</td><td>0,4</td><td>4,014</td><td>1,973</td><td>3,130</td><td>0,244</td><td rowspan="2">≈ 0 (10<sup>−14</sup>)</td></tr>
+<tr><td></td><td>scikit-learn</td><td>1,8</td><td>4,014</td><td>1,973</td><td>3,130</td><td>0,244</td></tr>
+<tr><td>Ridge (DG)</td><td>from scratch</td><td>5,2</td><td>4,014</td><td>1,973</td><td>3,130</td><td>0,244</td><td rowspan="2">≈ 0 (10<sup>−7</sup>)</td></tr>
+<tr><td></td><td>scikit-learn</td><td>1,7</td><td>4,014</td><td>1,973</td><td>3,130</td><td>0,244</td></tr>
+<tr><td>SGD</td><td>from scratch</td><td>164</td><td>4,017</td><td>1,972</td><td>3,130</td><td>0,245</td><td rowspan="2">0,90</td></tr>
+<tr><td></td><td>scikit-learn</td><td>8,6</td><td>4,009</td><td>1,974</td><td>3,137</td><td>0,241</td></tr>
+<tr><td>Arbre CART</td><td>from scratch</td><td>69</td><td>4,081</td><td>2,138</td><td>3,314</td><td>0,153</td><td rowspan="2">0 (arbres identiques, 40 feuilles)</td></tr>
+<tr><td></td><td>scikit-learn</td><td>16</td><td>4,081</td><td>2,138</td><td>3,314</td><td>0,153</td></tr>
+</table>
+<p>Les implémentations from scratch donnent <b>exactement les mêmes modèles</b> que scikit-learn : coefficients identiques
+pour MCO/Ridge, et arbre identique (mêmes coupures, mêmes importances, mêmes 40 feuilles). La SGD diffère légèrement,
+ce qui est attendu : les calendriers de pas et l'ordre de tirage ne sont pas les mêmes, mais les métriques sont
+équivalentes. Côté coût, notre arbre est ~4× plus lent (boucle Python sur les variables et les nœuds, prédiction
+observation par observation) contre du Cython pour scikit-learn. Les deux croissent en $O(n\log n)$ (fig. 13). Notre
+SGD est lente, car la boucle sur les mini-lots est écrite en Python.</p>
+<div class="two">
+<figure><img src="../figures/fig18_pred_agreement.png"><figcaption>Figure 12 — Prédictions de test : from scratch vs scikit-learn (alignées sur la diagonale).</figcaption></figure>
+</div>
+<div class="two">
+<figure><img src="../figures/fig20_tree_scaling.png"><figcaption>Figure 13 — Temps d'apprentissage de l'arbre selon $n$ : pentes similaires, facteur constant.</figcaption></figure>
+<figure><img src="../figures/fig19_test_rmse.png"><figcaption>Figure 14 — RMSE de test des modèles et références.</figcaption></figure>
+</div>
+
+<h3>5.2 Performance prédictive</h3>
+<table>
+<caption>Tableau 4 — Performances sur le test 2013–2019 et sur 2020</caption>
+<tr><th>Modèle</th><th>MAE test</th><th>RMSE test</th><th>R² test</th><th>RMSE 2020</th></tr>
+<tr><td>Moyenne du train</td><td>2,53</td><td>3,67</td><td>−0,04</td><td>9,66</td></tr>
+<tr><td>Persistance ($\hat y_t=y_{t-1}$)</td><td>2,18</td><td>3,77</td><td>−0,10</td><td>8,82</td></tr>
+<tr><td><b>Linéaire (from scratch)</b></td><td><b>1,97</b></td><td><b>3,13</b></td><td><b>0,244</b></td><td>6,65</td></tr>
+<tr><td>Arbre CART (from scratch)</td><td>2,14</td><td>3,31</td><td>0,153</td><td>7,93</td></tr>
+<tr><td>Forêt aléatoire (sklearn, référence)</td><td>2,06</td><td>3,21</td><td>0,206</td><td>—</td></tr>
+</table>
+<p>Le modèle linéaire bat toutes les références, y compris la forêt aléatoire. Il explique environ un quart de la
+variance de la croissance : la croissance d'un pays dépend surtout de facteurs absents de notre modèle (politiques
+économiques, conflits, prix des matières premières). En 2020, tous les modèles échouent ($R^2<0$). Le choc COVID
+dépasse de loin tout ce qui a été observé à l'entraînement, et la croissance mondiale de −3 % ne suffit pas à le
+décrire. C'est un cas typique de <b>décalage de distribution</b>.</p>
+
+<h3>5.3 Réponse à la question : ablation</h3>
+<table>
+<caption>Tableau 5 — Ablation : contrôles seuls vs contrôles + catastrophes (modèle linéaire)</caption>
+<tr><th>Échantillon</th><th>Modèle</th><th>RMSE (tous)</th><th>R² (tous)</th><th>RMSE (pays frappés*)</th></tr>
+<tr><td>Validation</td><td>contrôles seuls</td><td>4,052</td><td>0,298</td><td>3,191</td></tr>
+<tr><td></td><td>+ catastrophes</td><td>4,014</td><td>0,311</td><td><b>2,999</b> (−6,0 %)</td></tr>
+<tr><td>Test</td><td>contrôles seuls</td><td>3,157</td><td>0,232</td><td>3,080</td></tr>
+<tr><td></td><td>+ catastrophes</td><td>3,130</td><td>0,244</td><td><b>2,807</b> (−8,9 %)</td></tr>
+</table>
+<p style="font-size:9pt">* pays-années avec dommages climatiques > 0,1 % du PIB (145 en validation, 152 en test).</p>
+<div class="key">Les catastrophes climatiques contiennent une information <b>réelle mais modeste</b> sur la croissance : +1,3 point de $R^2$
+sur l'ensemble du test. Le gain se concentre sur les pays effectivement frappés, où l'erreur baisse de 6 à 9 %, de manière
+cohérente en validation et en test. À l'échelle mondiale, les catastrophes ne sont pas le principal moteur des
+fluctuations de croissance. Pour les pays touchés, en revanche, elles comptent.</div>
+
+<h3>5.4 Ampleur de l'effet</h3>
+<div class="two">
+<figure><img src="../figures/fig12_coefficients.png"><figcaption>Figure 15 — Coefficients standardisés et IC 95 % (bootstrap par pays). Bleu : catastrophes ; gris : contrôles.</figcaption></figure>
+<figure><img src="../figures/fig17_partial_dependence.png"><figcaption>Figure 16 — Dépendance partielle des dommages de l'année : linéaire vs arbres.</figcaption></figure>
+</div>
+<table>
+<caption>Tableau 6 — Effet estimé d'un choc climatique sur la croissance (modèle linéaire, IC 95 % bootstrap par pays)</caption>
+<tr><th>Dommages (% PIB)</th><th>Effet année $t$ (pts)</th><th>IC 95 %</th><th>Effet $t+1$ (pts)</th><th>Effet cumulé (pts)</th><th>IC 95 % cumulé</th></tr>
+<tr><td>1 %</td><td>−0,45</td><td>[−0,73 ; −0,18]</td><td>+0,22</td><td>−0,23</td><td>[−0,52 ; 0,06]</td></tr>
+<tr><td>5 %</td><td>−1,15</td><td>[−1,88 ; −0,47]</td><td>+0,57</td><td>−0,59</td><td>[−1,35 ; 0,16]</td></tr>
+<tr><td>10 %</td><td>−1,55</td><td>[−2,52 ; −0,63]</td><td>+0,76</td><td>−0,79</td><td>[−1,80 ; 0,22]</td></tr>
+<tr><td>50 %</td><td>−2,53</td><td>[−4,13 ; −1,03]</td><td>+1,24</td><td>−1,29</td><td>[−2,95 ; 0,35]</td></tr>
+</table>
+<p>L'effet de l'année du choc est <b>négatif et significatif</b>. Le coefficient retardé est <b>positif</b> (IC 95 % [0,00 ; 0,65]) :
+c'est l'effet de reconstruction. Il compense environ la moitié de la perte initiale. L'effet cumulé sur deux ans reste
+négatif, mais son intervalle inclut 0. Ces ordres de grandeur rejoignent la littérature empirique sur le sujet (Noy, 2009 ;
+Felbermayr &amp; Gröschl, 2014). Les autres résultats :</p>
+<ul>
+<li><b>Morts et sinistrés</b> : coefficients négatifs mais non significatifs une fois les dommages pris en compte, car ces mesures sont redondantes.</li>
+<li><b>Nombre d'inondations</b> : coefficient <i>positif</i> significatif. Il ne s'agit pas d'un effet causal : le compte d'événements mesure surtout la taille du pays et la qualité de l'enregistrement (grands pays émergents à forte croissance, comme la Chine, l'Inde ou l'Indonésie). D'où l'importance de normaliser par le PIB.</li>
+<li><b>Catastrophes géophysiques</b> : effet négatif d'ampleur comparable (−0,53), mais imprécis. Les séismes sont moins fréquents.</li>
+<li><b>Contrôles</b> : l'inertie (+0,34 pt par point de croissance en $t-1$) et le cycle mondial (+0,49) dominent. Le coefficient négatif du PIB/hab traduit la convergence (les pays pauvres croissent plus vite).</li>
+</ul>
+
+<h3>5.5 Pourquoi l'arbre fait moins bien</h3>
+<p>L'arbre retenu sur la validation <b>n'utilise quasiment pas les catastrophes</b>. Elles représentent 0,5 % de
+l'importance, contre 61 % pour <code>growth_lag1</code>, et sa dépendance partielle est plate (fig. 16). Ce n'est pas
+un bug, puisque l'arbre est identique à celui de scikit-learn, mais une <b>limite structurelle</b> : seuls 3,7 % des
+pays-années subissent un choc supérieur à 1 % du PIB. Une feuille d'au moins 100 observations ne peut pas isoler ces
+cas, et le critère glouton préfère les coupures sur l'inertie, qui réduisent bien plus la SSE. Un arbre moins contraint
+(feuilles ≥ 20) utilise les catastrophes (7 % de l'importance) et retrouve un effet négatif en marche, d'environ
+−0,35 pt au-delà de 0,5 % du PIB. Mais sa variance est plus forte et sa RMSE de validation plus élevée (4,15 contre
+4,08). Le modèle linéaire, lui, mutualise toute l'information dans un seul coefficient : il est statistiquement plus
+efficace pour détecter un effet moyen modéré porté par une variable rare. L'arbre approxime aussi la relation inertie →
+croissance, quasi linéaire, par une fonction en escalier (8 paliers), ce qui coûte en précision.</p>
+
+<h2>6. Discussion critique</h2>
+<h3>6.1 Limites</h3>
+<ul>
+<li><b>Association et non causalité.</b> Les catastrophes sont en grande partie exogènes (météo), mais les <i>dommages</i> ne le sont pas : ils dépendent de l'exposition et de la richesse. Une identification causale demanderait des mesures physiques (vitesse des vents, précipitations), des effets fixes pays ou une méthode de contrôle synthétique.</li>
+<li><b>Qualité d'EM-DAT.</b> 60–70 % des dommages ne sont pas renseignés (codés 0), avec un seuil d'inclusion et un biais de déclaration selon les pays et les époques. L'effet estimé est probablement <b>atténué</b> par l'erreur de mesure.</li>
+<li><b>Hétérogénéité.</b> Un coefficient unique moyenne des pays très différents : les petites îles ne réagissent pas comme les grandes économies diversifiées. Le résidu est fortement hétéroscédastique (fig. 17).</li>
+<li><b>Granularité annuelle.</b> Un cyclone en décembre touche surtout la croissance de l'année suivante. Ce décalage est partiellement capté par la variable retardée.</li>
+<li><b>Hors distribution.</b> 2020 montre que le modèle n'est pas fiable face à un choc global inédit.</li>
+<li><b>Coût de calcul.</b> Notre arbre est ~4× plus lent que scikit-learn et notre SGD ~20× : ce sont des boucles Python, alors que scikit-learn est compilé. C'est sans conséquence ici ($n\approx5\,000$), mais limitant à grande échelle.</li>
+</ul>
+<figure class="half"><img src="../figures/fig13_residuals.png" style="max-width:80%"><figcaption>Figure 17 — Résidus du modèle linéaire sur le test : centrés mais hétéroscédastiques.</figcaption></figure>
+<h3>6.2 Pistes d'amélioration</h3>
+<ul>
+<li>Effets fixes pays (centrage intra-pays) et interactions choc × revenu ou choc × petite île, pour mesurer l'hétérogénéité.</li>
+<li>Variables physiques indépendantes de la richesse (indices de vent ou de précipitations) pour se rapprocher d'un effet causal.</li>
+<li>Bagging et forêts aléatoires from scratch à partir de notre arbre, pour réduire sa variance (la forêt sklearn gagne 0,1 pt de RMSE sur l'arbre seul).</li>
+<li>Perte de Huber ou erreurs robustes, face aux récessions extrêmes.</li>
+<li>Vectorisation de la prédiction de l'arbre (parcours par niveau) et de la SGD.</li>
+</ul>
+
+<h2>7. Conclusion</h2>
+<p>Nous avons implémenté from scratch une régression linéaire/Ridge (trois solveurs) et un arbre CART. Ils reproduisent
+scikit-learn à la précision machine. Appliqués à 50 ans de données sur 201 pays, ils répondent ainsi à la question :
+<b>les catastrophes climatiques réduisent significativement la croissance l'année du choc</b>, d'environ 0,45 pt pour des
+dommages de 1 % du PIB et 1,5 pt pour 10 %. Un rebond partiel suit l'année suivante. Elles améliorent la prédiction
+hors échantillon, surtout pour les pays touchés (−9 % de RMSE). Leur poids reste toutefois faible face aux autres
+déterminants de la croissance. Le modèle linéaire, simple et interprétable, est ici préférable à l'arbre : l'information
+pertinente est portée par des événements rares, qu'un arbre peine à isoler.</p>
+
+<h2>Références</h2>
+<div class="refs">
+<p>[1] EM-DAT, CRED / UCLouvain, <i>The International Disaster Database</i>, www.emdat.be — via Kaggle : brsdincer/all-natural-disasters-19002021-eosdis.</p>
+<p>[2] Banque mondiale, <i>World Development Indicators</i> — via Kaggle : zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-growths.</p>
+<p>[3] Breiman, L., Friedman, J., Olshen, R., Stone, C. (1984). <i>Classification and Regression Trees</i>. Wadsworth.</p>
+<p>[4] Hastie, T., Tibshirani, R., Friedman, J. (2009). <i>The Elements of Statistical Learning</i>, 2<sup>e</sup> éd., chap. 3 et 9. Springer.</p>
+<p>[5] Boyd, S., Vandenberghe, L. (2004). <i>Convex Optimization</i>, chap. 9 (descente de gradient). Cambridge University Press.</p>
+<p>[6] Noy, I. (2009). The macroeconomic consequences of disasters. <i>Journal of Development Economics</i>, 88(2), 221–231.</p>
+<p>[7] Felbermayr, G., Gröschl, J. (2014). Naturally negative: The growth effects of natural disasters. <i>Journal of Development Economics</i>, 111, 92–106.</p>
+<p>[8] Cameron, A. C., Gelbach, J., Miller, D. (2008). Bootstrap-based improvements for inference with clustered errors. <i>Review of Economics and Statistics</i>, 90(3).</p>
+<p>[9] Pedregosa, F. et al. (2011). Scikit-learn: Machine Learning in Python. <i>JMLR</i>, 12, 2825–2830 (utilisé uniquement pour le benchmark et les métriques).</p>
+</div>
+</body>
+</html>

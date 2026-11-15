@@ -1,5 +1,5 @@
-méthode,max |Δ prédiction test|,max |Δ coefficient|,|Δ biais|,max |Δ importance|,feuilles (scratch / sklearn)
+method,max |Δ test prediction|,max |Δ coefficient|,|Δ bias|,max |Δ importance|,leaves (scratch / sklearn)
 OLS,3.8191672047105385e-14,3.802513859341161e-15,4.440892098500626e-16,,
-Ridge (DG),1.1343264083585325e-06,1.7222742990791184e-07,0.0,,
+Ridge (GD),1.1343264083585325e-06,1.7222742990791184e-07,0.0,,
 SGD,0.8989322803235331,0.08005147771308696,0.09296970173718977,,
-Arbre CART,3.552713678800501e-15,,,1.0547118733938987e-14,40 / 40
+CART tree,3.552713678800501e-15,,,1.0547118733938987e-14,40 / 40

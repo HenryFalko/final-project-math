@@ -1,30 +1,30 @@
-"""Arbre de régression CART implémenté from scratch.
+"""CART regression tree implemented from scratch.
 
-Modèle
-------
-Un arbre partitionne l'espace des variables en régions rectangulaires R_1..R_M
-par des tests binaires « x_j <= s ». La prédiction d'une observation est la
-moyenne de la cible dans la feuille (région) où elle tombe :
+Model
+-----
+A tree partitions the feature space into rectangular regions R_1..R_M using
+binary tests "x_j <= s". The prediction for an observation is the mean of the
+target in the leaf (region) it falls into:
 
-    ŷ(x) = Σ_m c_m 1{x ∈ R_m},     c_m = moyenne(y_i : x_i ∈ R_m)
+    ŷ(x) = Σ_m c_m 1{x ∈ R_m},     c_m = mean(y_i : x_i ∈ R_m)
 
-Critère d'impureté : somme des carrés des écarts (SSE), équivalente à la MSE
+Impurity criterion: sum of squared errors (SSE), equivalent to the MSE
     SSE(R) = Σ_{i∈R} (y_i - ȳ_R)² = Σ y_i² - (Σ y_i)² / |R|
 
-Recherche de la meilleure coupure (algorithme glouton, récursif)
----------------------------------------------------------------
-Pour chaque variable j, on trie les observations du nœud selon x_j ; les sommes
-cumulées de y et y² donnent SSE(gauche) et SSE(droite) pour TOUTES les
-coupures candidates en O(n) après le tri (O(n log n) au total par variable).
-On retient (j, s) maximisant le gain :
+Best-split search (greedy, recursive)
+-------------------------------------
+For each feature j, the node's observations are sorted by x_j; cumulative sums
+of y and y² then give SSE(left) and SSE(right) for ALL candidate splits in
+O(n) after sorting (O(n log n) per feature overall). We keep the (j, s)
+maximizing the gain:
 
-    Δ = SSE(parent) - SSE(gauche) - SSE(droite)
+    Δ = SSE(parent) - SSE(left) - SSE(right)
 
-Le seuil s est le milieu entre deux valeurs consécutives distinctes (même
-convention que scikit-learn). La croissance s'arrête si : profondeur maximale
-atteinte, moins de `min_samples_split` observations, aucune coupure ne laisse
-au moins `min_samples_leaf` observations de chaque côté, ou gain relatif
-inférieur à `min_impurity_decrease`.
+The threshold s is the midpoint between two consecutive distinct values (same
+convention as scikit-learn). Growth stops when: maximum depth is reached, fewer
+than `min_samples_split` observations remain, no split leaves at least
+`min_samples_leaf` observations on each side, or the relative gain is below
+`min_impurity_decrease`.
 """
 from __future__ import annotations
 
@@ -36,10 +36,10 @@ import numpy as np
 
 @dataclass
 class Node:
-    value: float                   # prédiction (moyenne de y dans le nœud)
+    value: float                   # prediction (mean of y in the node)
     n_samples: int
-    impurity: float                # MSE du nœud
-    feature: Optional[int] = None  # None => feuille
+    impurity: float                # MSE of the node
+    feature: Optional[int] = None  # None => leaf
     threshold: Optional[float] = None
     left: Optional["Node"] = None
     right: Optional["Node"] = None
@@ -57,7 +57,7 @@ class RegressionTreeScratch:
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_decrease = min_impurity_decrease
 
-    # ------------------------------------------------------------ apprentissage
+    # ----------------------------------------------------------------- training
     def fit(self, X, y):
         X = np.asarray(X, float)
         y = np.asarray(y, float)
@@ -70,7 +70,7 @@ class RegressionTreeScratch:
         return self
 
     def _best_split(self, X, y):
-        """Retourne (gain, feature, threshold) de la meilleure coupure ou None."""
+        """Returns (gain, feature, threshold) of the best split, or None."""
         n = len(y)
         L = self.min_samples_leaf
         parent_sse = np.sum((y - y.mean()) ** 2)
@@ -80,13 +80,13 @@ class RegressionTreeScratch:
             order = np.argsort(X[:, j], kind="mergesort")
             xs, ys = X[order, j], y[order]
             cs, cs2 = np.cumsum(ys), np.cumsum(ys ** 2)
-            # coupure après la position i (i = 0..n-2) : gauche = ys[:i+1]
+            # split after position i (i = 0..n-2): left = ys[:i+1]
             nl = np.arange(1, n)
             nr = n - nl
             sl, sl2 = cs[:-1], cs2[:-1]
             sr, sr2 = cs[-1] - sl, cs2[-1] - sl2
             sse = (sl2 - sl ** 2 / nl) + (sr2 - sr ** 2 / nr)
-            # coupures valides : valeurs distinctes + taille minimale des feuilles
+            # valid splits: distinct values + minimum leaf size
             valid = (xs[1:] > xs[:-1]) & (nl >= L) & (nr >= L)
             if not valid.any():
                 continue
@@ -109,7 +109,7 @@ class RegressionTreeScratch:
         if split is None:
             return node
         gain, j, s = split
-        # même définition que sklearn : diminution pondérée de l'impureté
+        # same definition as sklearn: weighted impurity decrease
         if gain / self._n_total < self.min_impurity_decrease:
             return node
         mask = X[:, j] <= s
@@ -119,7 +119,7 @@ class RegressionTreeScratch:
         node.right = self._grow(X[~mask], y[~mask], depth + 1)
         return node
 
-    # ---------------------------------------------------------------- inférence
+    # ---------------------------------------------------------------- inference
     def _predict_one(self, x):
         node = self.root_
         while not node.is_leaf:
@@ -130,7 +130,7 @@ class RegressionTreeScratch:
         X = np.asarray(X, float)
         return np.array([self._predict_one(x) for x in X])
 
-    # ------------------------------------------------------------- utilitaires
+    # ------------------------------------------------------------------ helpers
     def depth(self, node=None):
         node = self.root_ if node is None else node
         return 0 if node.is_leaf else 1 + max(self.depth(node.left), self.depth(node.right))
@@ -140,8 +140,8 @@ class RegressionTreeScratch:
         return 1 if node.is_leaf else self.n_leaves(node.left) + self.n_leaves(node.right)
 
     def to_text(self, feature_names=None, max_depth=3, unscale=None, node=None, depth=0):
-        """Représentation textuelle des premiers niveaux de l'arbre.
-        `unscale(j, s)` permet d'afficher les seuils dans l'unité d'origine."""
+        """Text rendering of the top levels of the tree.
+        `unscale(j, s)` shows thresholds in their original units."""
         node = self.root_ if node is None else node
         pad = "|   " * depth
         if node.is_leaf or depth >= max_depth:
@@ -156,8 +156,8 @@ class RegressionTreeScratch:
 
 
 def partial_dependence(model, X, j, grid):
-    """Dépendance partielle : prédiction moyenne quand x_j est fixé à chaque valeur
-    de `grid` (les autres variables gardent leurs valeurs observées)."""
+    """Partial dependence: mean prediction when x_j is set to each value of
+    `grid` (the other features keep their observed values)."""
     out = []
     for v in grid:
         Xm = X.copy()

@@ -1,31 +1,31 @@
-"""Régression linéaire (avec pénalité Ridge optionnelle) implémentée from scratch.
+"""Linear regression (with an optional Ridge penalty) implemented from scratch.
 
-Modèle
-------
-    ŷ = X w + b        (X : n x p, w : p, b : scalaire)
+Model
+-----
+    ŷ = X w + b        (X: n x p, w: p, b: scalar)
 
-Fonction objectif (moyenne, régularisation L2 sur w uniquement, pas sur b)
--------------------------------------------------------------------------
+Objective function (mean, L2 regularization on w only, not on b)
+----------------------------------------------------------------
     J(w, b) = 1/(2n) * ||X w + b - y||²  +  (alpha/2) * ||w||²
 
 Gradient
 --------
-    r          = X w + b - y               (résidus)
+    r          = X w + b - y               (residuals)
     dJ/dw      = (1/n) Xᵀ r + alpha * w
     dJ/db      = (1/n) Σ r
 
-Trois procédures d'ajustement sont fournies :
-    * "normal" : solution exacte, système (XᵀX/n + alpha*D) θ = Xᵀy/n
-                 (θ = [b, w], D = diag(0, 1, ..., 1)) ;
-    * "gd"     : descente de gradient à pas fixe (batch complet) ;
-    * "sgd"    : descente de gradient stochastique par mini-lots, avec
-                 décroissance du pas  eta_k = eta0 / (1 + decay * epoch).
+Three fitting procedures are provided:
+    * "normal": exact solution of the system (XᵀX/n + alpha*D) θ = Xᵀy/n
+                (θ = [b, w], D = diag(0, 1, ..., 1));
+    * "gd"    : fixed-step (full-batch) gradient descent;
+    * "sgd"   : mini-batch stochastic gradient descent with a decaying step
+                eta_k = eta0 / (1 + decay * epoch).
 
-Correspondance avec scikit-learn : Ridge minimise ||y - Xw - b||² + a ||w||²,
-donc a_sklearn = n * alpha.
+Mapping to scikit-learn: Ridge minimizes ||y - Xw - b||² + a ||w||²,
+so a_sklearn = n * alpha.
 
-Seules des opérations NumPy génériques (produits matriciels, np.linalg.solve)
-sont utilisées ; aucune routine d'apprentissage d'une bibliothèque ML.
+Only generic NumPy operations (matrix products, np.linalg.solve) are used;
+no learning routine from a machine-learning library.
 """
 from __future__ import annotations
 
@@ -37,17 +37,17 @@ class LinearRegressionScratch:
                  n_iter: int = 5000, tol: float = 1e-10, batch_size: int = 64,
                  decay: float = 0.01, random_state: int = 42):
         if solver not in ("normal", "gd", "sgd"):
-            raise ValueError("solver doit valoir 'normal', 'gd' ou 'sgd'")
+            raise ValueError("solver must be 'normal', 'gd' or 'sgd'")
         self.solver = solver
         self.alpha = alpha
         self.lr = lr
-        self.n_iter = n_iter        # itérations (gd) ou époques (sgd)
-        self.tol = tol              # arrêt si |J_k - J_{k-1}| < tol (gd)
+        self.n_iter = n_iter        # iterations (gd) or epochs (sgd)
+        self.tol = tol              # stop when |J_k - J_{k-1}| < tol (gd)
         self.batch_size = batch_size
         self.decay = decay
         self.random_state = random_state
 
-    # ----------------------------------------------------------------- objectif
+    # ---------------------------------------------------------------- objective
     def loss(self, X, y, w=None, b=None) -> float:
         w = self.coef_ if w is None else w
         b = self.intercept_ if b is None else b
@@ -59,7 +59,7 @@ class LinearRegressionScratch:
         r = X @ w + b - y
         return X.T @ r / n + self.alpha * w, r.mean()
 
-    # ------------------------------------------------------------- apprentissage
+    # ----------------------------------------------------------------- training
     def fit(self, X, y):
         X = np.asarray(X, float)
         y = np.asarray(y, float)
@@ -75,18 +75,18 @@ class LinearRegressionScratch:
 
     def _fit_normal(self, X, y):
         n, p = X.shape
-        Xa = np.hstack([np.ones((n, 1)), X])          # colonne de 1 pour b
+        Xa = np.hstack([np.ones((n, 1)), X])          # column of ones for b
         D = np.eye(p + 1)
-        D[0, 0] = 0.0                                  # pas de pénalité sur b
+        D[0, 0] = 0.0                                  # no penalty on b
         A = Xa.T @ Xa / n + self.alpha * D
-        theta = np.linalg.solve(A, Xa.T @ y / n)       # résolution exacte
+        theta = np.linalg.solve(A, Xa.T @ y / n)       # exact solve
         self.intercept_, self.coef_ = theta[0], theta[1:]
         self.n_iter_ = 0
         self.loss_history_ = [self.loss(X, y)]
 
     def _fit_gd(self, X, y):
         n, p = X.shape
-        w, b = np.zeros(p), y.mean()     # init : b = moyenne (point de départ raisonnable)
+        w, b = np.zeros(p), y.mean()     # init: b = mean (sensible starting point)
         prev = np.inf
         for k in range(self.n_iter):
             gw, gb = self.gradient(X, y, w, b)
@@ -95,8 +95,8 @@ class LinearRegressionScratch:
             J = self.loss(X, y, w, b)
             self.loss_history_.append(J)
             if not np.isfinite(J):
-                raise FloatingPointError(f"divergence (lr={self.lr} trop grand)")
-            if abs(prev - J) < self.tol:  # critère d'arrêt : stagnation de J
+                raise FloatingPointError(f"divergence (lr={self.lr} too large)")
+            if abs(prev - J) < self.tol:  # stopping criterion: J stagnates
                 break
             prev = J
         self.coef_, self.intercept_, self.n_iter_ = w, b, k + 1
@@ -107,7 +107,7 @@ class LinearRegressionScratch:
         w, b = np.zeros(p), y.mean()
         for epoch in range(self.n_iter):
             eta = self.lr / (1.0 + self.decay * epoch)
-            idx = rng.permutation(n)                      # mélange à chaque époque
+            idx = rng.permutation(n)                      # reshuffle every epoch
             for start in range(0, n, self.batch_size):
                 bi = idx[start:start + self.batch_size]
                 gw, gb = self.gradient(X[bi], y[bi], w, b)
@@ -116,18 +116,18 @@ class LinearRegressionScratch:
             self.loss_history_.append(self.loss(X, y, w, b))
         self.coef_, self.intercept_, self.n_iter_ = w, b, self.n_iter
 
-    # ----------------------------------------------------------------- inférence
+    # ---------------------------------------------------------------- inference
     def predict(self, X):
         return np.asarray(X, float) @ self.coef_ + self.intercept_
 
 
 # ---------------------------------------------------------------------------
-# Vérifications numériques
+# Numerical checks
 # ---------------------------------------------------------------------------
 def numerical_gradient_check(model: LinearRegressionScratch, X, y, eps=1e-6, seed=0):
-    """Compare le gradient analytique à des différences finies centrées.
+    """Compares the analytical gradient with centred finite differences.
 
-    Retourne l'erreur relative ||g_ana - g_num|| / (||g_ana|| + ||g_num||).
+    Returns the relative error ||g_ana - g_num|| / (||g_ana|| + ||g_num||).
     """
     rng = np.random.default_rng(seed)
     p = X.shape[1]
@@ -148,9 +148,9 @@ def numerical_gradient_check(model: LinearRegressionScratch, X, y, eps=1e-6, see
 
 
 def max_stable_lr(X, alpha=0.0):
-    """Pas maximal théorique de la descente de gradient : 2 / L,
-    L = plus grande valeur propre de la hessienne (XᵀX/n + alpha I),
-    avec la colonne de 1 (biais) incluse."""
+    """Theoretical maximum gradient-descent step: 2 / L,
+    L = largest eigenvalue of the Hessian (XᵀX/n + alpha I),
+    with the column of ones (bias) included."""
     n = X.shape[0]
     Xa = np.hstack([np.ones((n, 1)), X])
     H = Xa.T @ Xa / n
@@ -159,11 +159,11 @@ def max_stable_lr(X, alpha=0.0):
 
 
 def cluster_bootstrap_coefs(X, y, groups, alpha=0.0, n_boot=500, seed=42):
-    """Bootstrap par pays (rééchantillonnage de pays entiers, avec remise).
+    """Country-level (cluster) bootstrap: whole countries resampled with replacement.
 
-    Les observations d'un même pays sont corrélées dans le temps ; tirer des
-    pays entiers préserve cette dépendance et donne des intervalles de
-    confiance plus honnêtes qu'un bootstrap ligne à ligne.
+    Observations from the same country are correlated over time; drawing whole
+    countries preserves that dependence and gives more honest confidence
+    intervals than a row-by-row bootstrap.
     """
     rng = np.random.default_rng(seed)
     uniq = np.unique(groups)

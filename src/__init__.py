@@ -1,1 +1,1 @@
-"""Projet ML : influence des catastrophes climatiques sur la croissance économique."""
+"""ML project: the influence of climate disasters on economic growth."""

@@ -1,4 +1,4 @@
-"""Style graphique commun à tous les notebooks (cohérence des figures du rapport)."""
+"""Shared plotting style for all notebooks (keeps the report figures consistent)."""
 import os
 
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ RES_DIR = os.path.join(ROOT, "results")
 os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(RES_DIR, exist_ok=True)
 
-# Palette : bleu = from scratch, orange = scikit-learn, gris = référence
+# Palette: blue = from scratch, orange = scikit-learn, grey = reference
 C_SCRATCH = "#2a6f97"
 C_SKLEARN = "#e07a1f"
 C_CLIMATE = "#2a6f97"

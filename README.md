@@ -1,25 +1,25 @@
-# Catastrophes climatiques et croissance économique — Projet ML
+# Climate Disasters and Economic Growth — ML Project
 
-**Question :** les catastrophes climatiques (inondations, tempêtes, sécheresses, canicules, feux) subies par un pays une année donnée réduisent-elles sa croissance du PIB réel, et de combien ?
+**Question:** do the climate disasters (floods, storms, droughts, heatwaves, wildfires) that hit a country in a given year reduce its real GDP growth, and by how much?
 
-**Méthodes implémentées from scratch** (NumPy uniquement) puis comparées à scikit-learn sur des découpages identiques :
-- régression linéaire / Ridge : équations normales, descente de gradient, SGD par mini-lots, vérification du gradient, bootstrap par pays ;
-- arbre de régression CART : critère SSE, recherche de coupure par sommes cumulées, croissance récursive, importances.
+**Methods implemented from scratch** (NumPy only), then compared with scikit-learn on identical splits:
+- linear / Ridge regression: normal equations, gradient descent, mini-batch SGD, gradient check, country-level bootstrap;
+- CART regression tree: SSE criterion, split search with cumulative sums, recursive growth, feature importances.
 
-Rapport : [`report/rapport.pdf`](report/rapport.pdf) (source HTML : `report/rapport.html`).
+Report: [`report/report.pdf`](report/report.pdf) (HTML source: `report/report.html`).
 
-## Données (Kaggle — non redistribuées)
-| Jeu | URL |
+## Data (Kaggle)
+| Dataset | URL |
 |---|---|
-| EM-DAT, catastrophes naturelles 1900–2021 | https://www.kaggle.com/datasets/brsdincer/all-natural-disasters-19002021-eosdis |
-| Banque mondiale, PIB / croissance | https://www.kaggle.com/datasets/zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-growths |
+| EM-DAT, natural disasters 1900–2021 | https://www.kaggle.com/datasets/brsdincer/all-natural-disasters-19002021-eosdis |
+| World Bank, GDP / growth | https://www.kaggle.com/datasets/zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-growths |
 
-Arborescence attendue après décompression :
+Expected layout after unzipping:
 ```
 data/disasters/DISASTERS/1970-2021_DISASTERS.xlsx - emdat data.csv
 data/gdp/gdp.csv, gdp_growth.csv, gdp_per_capita.csv, ...
 ```
-Téléchargement, par exemple avec la CLI Kaggle :
+To download, for example with the Kaggle CLI:
 ```bash
 kaggle datasets download -d brsdincer/all-natural-disasters-19002021-eosdis -p data/disasters --unzip
 kaggle datasets download -d zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-growths -p data/gdp --unzip
@@ -28,22 +28,22 @@ kaggle datasets download -d zgrcemta/world-gdpgdp-gdp-per-capita-and-annual-grow
 ## Structure
 ```
 src/
-  data_prep.py        construction du panel pays-année, découpage temporel, winsorisation/standardisation (fit sur train)
-  scratch_linear.py   régression linéaire/Ridge from scratch (+ check de gradient, pas maximal, bootstrap par pays)
-  scratch_tree.py     arbre CART from scratch (+ dépendance partielle)
-  plot_style.py       style graphique commun
-notebooks/            à exécuter dans l'ordre
+  data_prep.py        country-year panel, chronological split, winsorization/standardization (fitted on train)
+  scratch_linear.py   linear/Ridge regression from scratch (+ gradient check, maximum step, country bootstrap)
+  scratch_tree.py     CART tree from scratch (+ partial dependence)
+  plot_style.py       shared plotting style
+notebooks/            run in order
   01_exploration_preparation.ipynb
-  02_regression_lineaire_scratch.ipynb
-  03_arbre_regression_scratch.ipynb
-  04_benchmark_sklearn.ipynb     (benchmark séparé : scikit-learn utilisé ici uniquement)
-figures/              figures générées (fig01 ... fig20)
-results/              tableaux de résultats (CSV)
-report/               rapport HTML + PDF
+  02_linear_regression_scratch.ipynb
+  03_regression_tree_scratch.ipynb
+  04_benchmark_sklearn.ipynb     (separate benchmark: scikit-learn is only used here)
+figures/              generated figures (fig01 ... fig20)
+results/              result tables (CSV)
+report/               HTML + PDF report
 ```
 
-## Reproduire
-Python 3.13 (testé), graine aléatoire 42 partout.
+## Reproduce
+Python 3.13 (tested), random seed 42 everywhere.
 ```bash
 pip install -r requirements.txt
 ```
@@ -51,19 +51,19 @@ pip install -r requirements.txt
 cd notebooks
 ```
 ```bash
-jupyter nbconvert --to notebook --execute --inplace 01_exploration_preparation.ipynb 02_regression_lineaire_scratch.ipynb 03_arbre_regression_scratch.ipynb 04_benchmark_sklearn.ipynb
+jupyter nbconvert --to notebook --execute --inplace 01_exploration_preparation.ipynb 02_linear_regression_scratch.ipynb 03_regression_tree_scratch.ipynb 04_benchmark_sklearn.ipynb
 ```
-L'ordre compte : le notebook 04 relit les hyperparamètres choisis dans 02 et 03 (`results/`). Durée totale : environ 2 minutes.
+Order matters: notebook 04 reads the hyperparameters selected in 02 and 03 (`results/`). Total run time: about 2 minutes.
 
-## Résultats principaux (test 2013–2019)
-| Modèle | RMSE | R² |
+## Main results (test 2013–2019)
+| Model | RMSE | R² |
 |---|---|---|
-| Moyenne du train | 3,67 | −0,04 |
-| Linéaire from scratch (= sklearn) | **3,13** | **0,244** |
-| Arbre CART from scratch (= sklearn, 40 feuilles identiques) | 3,31 | 0,153 |
+| Training mean | 3.67 | −0.04 |
+| Linear from scratch (= sklearn) | **3.13** | **0.244** |
+| CART tree from scratch (= sklearn, 40 identical leaves) | 3.31 | 0.153 |
 
-- Ajouter les catastrophes réduit la RMSE de test de 8,9 % sur les pays frappés (dommages > 0,1 % du PIB).
-- Des dommages égaux à 10 % du PIB vont avec une croissance plus faible de 1,5 pt l'année du choc (IC 95 % [−2,5 ; −0,6]), puis un rebond partiel l'année suivante.
+- Adding the disasters lowers the test RMSE by 8.9 % for the countries hit (damages > 0.1 % of GDP).
+- Damages equal to 10 % of GDP go with growth 1.5 pt lower in the shock year (95 % CI [−2.5, −0.6]), then a partial rebound the following year.
 
-## Code externe
-Aucun code externe n'est repris. scikit-learn ne sert qu'au benchmark (notebook 04) et aux métriques (MAE, RMSE, R²).
+## External code
+No external code is reused. scikit-learn is only used for the benchmark (notebook 04) and the metrics (MAE, RMSE, R²).

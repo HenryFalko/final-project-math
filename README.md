@@ -65,5 +65,7 @@ Order matters: notebook 04 reads the hyperparameters selected in 02 and 03 (`res
 - Adding the disasters lowers the test RMSE by 8.9 % for the countries hit (damages > 0.1 % of GDP).
 - Damages equal to 10 % of GDP go with growth 1.5 pt lower in the shock year (95 % CI [−2.5, −0.6]), then a partial rebound the following year.
 
-## External code
+## External code and AI assistance
 No external code is reused. scikit-learn is only used for the benchmark (notebook 04) and the metrics (MAE, RMSE, R²).
+
+This project was developed with the help of an AI assistant (Claude, Anthropic) for code, report and slides; we reviewed, ran and understood all of it.
